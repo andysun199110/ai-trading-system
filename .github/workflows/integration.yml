@@ -1,0 +1,18 @@
+name: integration
+on:
+  push:
+    branches: [develop]
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_USER: gold, POSTGRES_PASSWORD: gold, POSTGRES_DB: gold_ai}
+        ports: ['5432:5432']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -e .[dev]
+      - run: pytest tests/integration

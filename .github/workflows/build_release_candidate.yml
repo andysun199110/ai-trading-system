@@ -1,0 +1,10 @@
+name: build_release_candidate
+on:
+  push:
+    branches: [staging]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f infra/docker/Dockerfile.api -t gold-ai:${{ github.sha }} .
