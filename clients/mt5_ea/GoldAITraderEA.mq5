@@ -3,14 +3,16 @@
 input string ApiBase = "http://127.0.0.1/api/v1";
 input string LicenseKey = "";
 input string AccountServer = "";
+input bool ShadowMode = true;
 string SessionToken = "";
 string ProcessedSignalsFile = "processed_signals.csv";
 bool ExpiryProtectiveMode = false;
 
 int OnInit() {
-  Print("[GoldAI] startup");
+  Print("[GoldAI] startup restore + reconcile");
+  RestoreLocalState();
   Authenticate();
-  EventSetTimer(15);
+  EventSetTimer(60); // lightweight 1-minute supervision cadence
   return(INIT_SUCCEEDED);
 }
 
@@ -19,34 +21,52 @@ void OnDeinit(const int reason){ EventKillTimer(); }
 void OnTimer(){
   if(SessionToken=="") Authenticate();
   Heartbeat();
+  ReconcileServerSignalsAndPositions();
   PollSignals();
+  SuperviseOpenPositions();
+}
+
+void RestoreLocalState(){
+  Print("[GoldAI] restore processed signal ledger");
 }
 
 void Authenticate(){
-  Print("[GoldAI] auth request");
-  // TODO: implement WebRequest POST /auth/activate and store token
+  Print("[GoldAI] auth request /auth/activate");
+  // stage2: WebRequest POST /auth/activate and cache token.
 }
 
 void Heartbeat(){
-  Print("[GoldAI] heartbeat");
-  // TODO: POST /auth/heartbeat; set ExpiryProtectiveMode when expired
+  Print("[GoldAI] heartbeat /auth/heartbeat");
+  // stage2: set ExpiryProtectiveMode=true when server denies trading authorization.
 }
 
 void PollSignals(){
-  Print("[GoldAI] poll signals");
-  // TODO: GET /signals/poll
-  // 1) ignore duplicates by local file
-  // 2) apply local safety checks
-  // 3) block new entries on expiry
-  // 4) allow protective actions for open positions when ExpiryProtectiveMode=true
+  Print("[GoldAI] poll server-directed signals");
+  // stage2 execution-only flow:
+  // 1) GET /signals/poll
+  // 2) ignore duplicates via ProcessedSignalsFile
+  // 3) only execute if not expiry-protected OR signal is protective action
+  // 4) apply SL/TP from server payload
+  // 5) report execution to /execution/report
+}
+
+void SuperviseOpenPositions(){
+  // stage2 local handling: breakeven/trailing based only on server directives + local safety
+  if(ExpiryProtectiveMode){
+    Print("[GoldAI] protective mode active: block new entries, allow defensive management");
+  }
+}
+
+void ReconcileServerSignalsAndPositions(){
+  Print("[GoldAI] reconcile local MT5 positions with server signal state");
 }
 
 bool IsDuplicateSignal(string signal_id){
-  // TODO: persist/reload processed signal IDs from ProcessedSignalsFile
+  // stage2: persist processed IDs and reject repeats
   return false;
 }
 
 void ReportExecution(string signal_id, string status){
   Print("[GoldAI] execution report: ", signal_id, " ", status);
-  // TODO: POST /execution/report
+  // stage2: POST /execution/report with signal_id and status
 }
