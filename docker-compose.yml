@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    env_file: .env
+    depends_on: [db, redis]
+    restart: unless-stopped
+    ports: ["8000:8000"]
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gold
+      POSTGRES_PASSWORD: gold
+      POSTGRES_DB: gold_ai
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    restart: unless-stopped
+  redis:
+    image: redis:7
+    restart: unless-stopped
+  nginx:
+    image: nginx:1.27
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports: ["80:80"]
+    depends_on: [api]
+    restart: unless-stopped
+volumes:
+  pgdata:
