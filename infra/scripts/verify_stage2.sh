@@ -38,7 +38,7 @@ echo ""
 
 # 2. Database Migration
 echo "--- Database Migration ---"
-check "Alembic migration current" "docker compose exec -T api alembic -c infra/migrations/alembic.ini current 2>&1 | grep -q '0002_stage2'"
+check "Alembic migration current" "docker compose exec -T api alembic -c infra/migrations/alembic.ini current 2>&1 | grep -qE '000[23]_stage2'"
 echo ""
 
 # 3. Health Endpoints

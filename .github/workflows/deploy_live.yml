@@ -2,15 +2,52 @@ name: deploy_live
 on:
   push:
     branches: [main]
+
 jobs:
-  deploy:
+  verify-stage2:
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.verify.outputs.result }}
     steps:
-      - uses: appleboy/ssh-action@v1.2.0
+      - uses: actions/checkout@v4
+      
+      - name: Verify critical files
+        run: |
+          test -f services/ai_orchestrator/provider.py || exit 1
+          test -f infra/scripts/verify_stage2.sh || exit 1
+          test -f infra/migrations/versions/0002_stage2_schema_normalization.py || exit 1
+          echo "✓ Critical files verified"
+      
+      - name: Set verify result
+        id: verify
+        run: echo "result=success" >> $GITHUB_OUTPUT
+
+  deploy-gate:
+    needs: verify-stage2
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deployment approval required
+        run: |
+          echo "⚠️  DEPLOYMENT GATE: Manual approval required"
+          echo "   Environment: production"
+          echo "   Required reviewers: configured in GitHub repository settings"
+          echo "   This deployment will only proceed after manual approval."
+
+  deploy:
+    needs: [verify-stage2, deploy-gate]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to production
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.LIVE_HOST }}
           username: ${{ secrets.LIVE_USER }}
           key: ${{ secrets.LIVE_SSH_KEY }}
           script: |
-            cd /opt/ai-trading-system
+            cd /opt/ai-trading
             ./infra/scripts/deploy.sh main
+            ./infra/scripts/verify_stage2.sh
