@@ -21,8 +21,16 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="CHANGE_ME", min_length=8)
     session_ttl_minutes: int = 15
 
+    # Telegram notification
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+
+    # AI provider configuration
+    ai_provider: str = Field(default="mock", description="AI provider: mock|deepseek")
+    deepseek_api_base: str = Field(default="https://api.deepseek.com", description="DeepSeek API base URL")
+    deepseek_api_key: str = Field(default="", description="DeepSeek API key")
+    ai_timeout_ms: int = Field(default=10000, description="AI request timeout in milliseconds")
+    ai_max_retries: int = Field(default=3, description="Maximum retry attempts for AI requests")
 
 
 @lru_cache(maxsize=1)

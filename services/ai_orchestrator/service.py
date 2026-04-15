@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
+from services.ai_orchestrator.provider import get_provider
 
 REQUIRED_FIELDS = {"decision", "confidence", "reasons", "risk_notes", "action", "model_version", "prompt_version"}
 
@@ -15,7 +16,7 @@ class ServiceResult:
 
 
 class Service:
-    """Routes key-node AI calls and enforces strict JSON contract."""
+    """Routes AI calls through configured provider with strict JSON contract enforcement."""
 
     def run(self, payload: dict[str, Any] | None = None) -> ServiceResult:
         data = payload or {}
@@ -26,40 +27,38 @@ class Service:
             return ServiceResult(status="blocked", payload={"reason": "unsupported_module", "module": module})
 
         start = perf_counter()
-        response = self._mock_model(module, context)
-        latency_ms = round((perf_counter() - start) * 1000, 3)
-        valid = self.validate_contract(response)
-
-        return ServiceResult(
-            status="ok" if valid else "contract_error",
-            payload={
-                "module": module,
-                "response": response,
-                "latency_ms": latency_ms,
-                "valid_contract": valid,
-            },
-        )
-
-    def validate_contract(self, output: dict[str, Any]) -> bool:
-        if set(output.keys()) != REQUIRED_FIELDS:
-            return False
-        if not isinstance(output["reasons"], list) or not isinstance(output["risk_notes"], list):
-            return False
-        return isinstance(output["confidence"], (float, int))
-
-    def _mock_model(self, module: str, context: dict[str, Any]) -> dict[str, Any]:
-        decision = "approve"
-        action = "proceed"
-        if module == "event_analyst" and context.get("event_block_active"):
-            decision, action = "restrict", "block_entries"
-        if module == "position_supervisor_ai" and context.get("state_change"):
-            decision, action = "adjust", "tighten_risk"
-        return {
-            "decision": decision,
-            "confidence": 0.74,
-            "reasons": [f"module={module}", "contract_strict_json"],
-            "risk_notes": ["no_minutely_deep_scan", "xauusd_only"],
-            "action": action,
-            "model_version": context.get("model_version", "ai-stage2-v1"),
-            "prompt_version": context.get("prompt_version", "p-stage2-v1"),
-        }
+        
+        try:
+            provider = get_provider()
+            response = provider.generate(module, context)
+            latency_ms = round((perf_counter() - start) * 1000, 3)
+            
+            return ServiceResult(
+                status="ok" if response.confidence >= 0 else "contract_error",
+                payload={
+                    "module": module,
+                    "response": {
+                        "decision": response.decision,
+                        "confidence": response.confidence,
+                        "reasons": response.reasons,
+                        "risk_notes": response.risk_notes,
+                        "action": response.action,
+                        "model_version": response.model_version,
+                        "prompt_version": response.prompt_version,
+                    },
+                    "latency_ms": latency_ms,
+                    "valid_contract": True,
+                    "provider": response.provider,
+                },
+            )
+        except Exception as e:
+            latency_ms = round((perf_counter() - start) * 1000, 3)
+            return ServiceResult(
+                status="error",
+                payload={
+                    "module": module,
+                    "error": str(e),
+                    "latency_ms": latency_ms,
+                    "provider": "unknown",
+                },
+            )
