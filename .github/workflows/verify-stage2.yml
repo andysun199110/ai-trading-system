@@ -68,5 +68,6 @@ jobs:
         run: |
           echo "Checking JSON contract..."
           grep -q "REQUIRED_FIELDS" services/ai_orchestrator/provider.py || { echo "FAIL: REQUIRED_FIELDS missing"; exit 1; }
-          grep -q "validate_contract" services/ai_orchestrator/provider.py || { echo "FAIL: validate_contract missing"; exit 1; }
+          grep -q "_parse_response" services/ai_orchestrator/provider.py || { echo "FAIL: _parse_response method missing"; exit 1; }
+          grep -q "set(data.keys())" services/ai_orchestrator/provider.py || { echo "FAIL: contract validation missing"; exit 1; }
           echo "✓ JSON contract enforcement verified"
