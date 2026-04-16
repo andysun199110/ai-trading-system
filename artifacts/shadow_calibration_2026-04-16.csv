@@ -1,0 +1,8 @@
+timestamp_utc,ai_response_latency_ms,auth_session_health,signal_generation_count,blocked_signal_reason_count,duplicate_prevention_check
+2026-04-16T11:18:51.880620+00:00,6.22,degraded,0,1,passed
+2026-04-16T11:23:52.038996+00:00,3.02,degraded,0,1,passed
+2026-04-16T11:28:52.147062+00:00,3.13,degraded,0,1,passed
+2026-04-16T11:33:52.254185+00:00,2.87,degraded,0,1,passed
+2026-04-16T11:38:52.359127+00:00,2.98,degraded,0,1,passed
+2026-04-16T11:43:52.461152+00:00,2.93,degraded,0,1,passed
+2026-04-16T11:48:52.562046+00:00,2.76,degraded,0,1,passed
