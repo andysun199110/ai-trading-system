@@ -1,9 +1,10 @@
 # Shadow Phase B - 24 Hour Observation Report
 
-**Report Generated:** _Pending completion_  
-**Observation Window:** 2026-04-16 12:00 UTC → 2026-04-17 12:00 UTC (24 hours)  
-**Git Commit:** _TBD_  
-**Mode:** Shadow (真实下单=0)
+**Report Generated:** 2026-04-16T11:57 UTC (Phase B Started)  
+**Observation Window:** 2026-04-16 11:51 UTC → 2026-04-17 11:51 UTC (24 hours)  
+**Git Commit:** `0504ea6`  
+**Mode:** Shadow (真实下单=0)  
+**Progress:** 2/288 samples (<1%)
 
 ---
 
@@ -19,10 +20,12 @@
 
 | 服务 | 状态 | 备注 |
 |------|------|------|
-| api-1 | 🟡 Monitoring | - |
-| db-1 | 🟡 Monitoring | - |
-| nginx-1 | 🟡 Monitoring | - |
-| redis-1 | 🟡 Monitoring | - |
+| api-1 | ✅ Running | Up 7+ hours |
+| db-1 | ✅ Running | Up 29+ hours |
+| nginx-1 | ✅ Running | Up 7+ hours |
+| redis-1 | ✅ Running | Up 29+ hours |
+
+**Phase A.1 Calibration:** ✅ PASSED (300.11s avg interval)
 
 ---
 
