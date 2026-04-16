@@ -1,2 +1,5 @@
 timestamp_utc,ai_latency_ms,auth_session_health,signal_count,blocked_reasons,duplicate_checks,order_execution_count,strategy_version,model_version,config_version
 2026-04-16T06:48:45+00:00,N/A,ok,0,protective_mode_only,N/A,0,stage2-shadow,ai-stage2-v1,shadow-2026w15
+2026-04-16T08:05:40+00:00,N/A,ok,0,protective_mode_only,N/A,0,stage2-shadow,ai-stage2-v1,shadow-2026w15
+2026-04-16T08:05:41+00:00,N/A,ok,0,protective_mode_only,N/A,0,stage2-shadow,ai-stage2-v1,shadow-2026w15
+2026-04-16T08:05:42+00:00,N/A,ok,0,protective_mode_only,N/A,0,stage2-shadow,ai-stage2-v1,shadow-2026w15
