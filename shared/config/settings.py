@@ -110,3 +110,25 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+# Stage 2: MT5 configuration
+mt5_account_login: str = ""
+mt5_account_server: str = ""
+
+# Finnhub configuration
+finnhub_api_key: str = ""
+event_calendar_provider: str = "finnhub"
+etf_data_provider: str = "finnhub"
+
+# Circuit breaker configuration
+circuit_breaker_enabled: bool = False
+circuit_breaker_failure_threshold: int = 5
+circuit_breaker_recovery_seconds: int = 60
+
+# Stall detection
+stall_detection_threshold_minutes: int = 30
+
+# Shadow/Staging mode
+shadow_mode_enabled: bool = True
+staging_mode_enabled: bool = False
