@@ -7,12 +7,21 @@ import time
 
 logger = logging.getLogger(__name__)
 
+
+class MT5ConnectionResult:
+    """Result container for MT5 connection test."""
+    def __init__(self, ok: bool, detail: str, bars: list = None):
+        self.ok = ok
+        self.detail = detail
+        self.bars = bars or []
+
+
 class MT5WineProvider:
     """MT5 provider that executes Wine Python commands directly with fallback to mt5linux."""
     
     def __init__(self, host=None, port=None, timeout=10, retries=3):
         self.wine_prefix = "/config/.wine"
-        self.host = host or os.environ.get("MT5_BRIDGE_HOST", "ai-trading-mt5-1")
+        self.host = host or os.environ.get("MT5_BRIDGE_HOST", "mt5")
         self.port = port or int(os.environ.get("MT5_BRIDGE_PORT", "8001"))
         self.timeout = timeout
         self.retries = retries
@@ -95,10 +104,36 @@ else:
         
         logger.error(f"All attempts failed. Last error: {last_error}")
         return []
+    
+    def test_connection(self) -> MT5ConnectionResult:
+        """Test MT5 connection and return structured result."""
+        try:
+            bars = self.get_bars("XAUUSD", "M5", 1)
+            if bars:
+                return MT5ConnectionResult(
+                    ok=True,
+                    detail=f"Successfully fetched {len(bars)} bars",
+                    bars=bars
+                )
+            else:
+                return MT5ConnectionResult(
+                    ok=False,
+                    detail="Connection established but no data returned",
+                    bars=[]
+                )
+        except Exception as e:
+            return MT5ConnectionResult(
+                ok=False,
+                detail=f"Connection failed: {str(e)}",
+                bars=[]
+            )
+
 
 if __name__ == "__main__":
     provider = MT5WineProvider()
-    bars = provider.get_bars("XAUUSD", "M5", 5)
-    print(f"Bars: {len(bars)}")
-    for b in bars[:3]:
+    result = provider.test_connection()
+    print(f"OK: {result.ok}")
+    print(f"Detail: {result.detail}")
+    print(f"Bars: {len(result.bars)}")
+    for b in result.bars[:3]:
         print(f"  {b}")

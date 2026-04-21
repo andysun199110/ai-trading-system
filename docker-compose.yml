@@ -9,6 +9,7 @@ services:
     depends_on:
       - db
       - redis
+      - mt5
     restart: unless-stopped
     ports:
       - "8000:8000"
