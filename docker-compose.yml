@@ -1,30 +1,83 @@
 version: '3.9'
+
 services:
   api:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.api
     env_file: .env
-    depends_on: [db, redis]
+    depends_on:
+      - db
+      - redis
+      - mt5
     restart: unless-stopped
-    ports: ["8000:8000"]
+    ports:
+      - "8000:8000"
+    networks:
+      - trading
+      - bridge
+
+  mt5:
+    image: gmag11/metatrader5_vnc
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000/tcp"
+      - "127.0.0.1:5900:5900/tcp"
+      - "127.0.0.1:8001:8001/tcp"
+    environment:
+      - WINEPREFIX=/config/.wine
+      - WINEDEBUG=-all
+    volumes:
+      - mt5-data:/config
+    networks:
+      - bridge
+    command: >
+      bash -c "
+      # Wait for MT5 terminal to start
+      sleep 30
+      # Start mt5linux bridge server
+      python3 -m mt5linux --host 0.0.0.0 -p 8001 &
+      # Keep container running
+      sleep infinity
+      "
+
   db:
     image: postgres:16
     environment:
       POSTGRES_USER: gold
       POSTGRES_PASSWORD: gold
       POSTGRES_DB: gold_ai
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      - trading
+
   redis:
     image: redis:7
     restart: unless-stopped
+    networks:
+      - trading
+
   nginx:
     image: nginx:1.27
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    ports: ["80:80"]
-    depends_on: [api]
+    ports:
+      - "80:80"
+    depends_on:
+      - api
     restart: unless-stopped
+    networks:
+      - trading
+
+networks:
+  trading:
+    driver: bridge
+  bridge:
+    external: true
+    name: bridge
+
 volumes:
   pgdata:
+  mt5-data:

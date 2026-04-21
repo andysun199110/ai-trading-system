@@ -194,7 +194,7 @@ def generate_hourly_summary(metrics_list: list, hour: int) -> dict:
     if not metrics_list:
         return {}
     
-    latencies = [m["ai_response_latency_ms"] for m in metrics_list if m["ai_response_latency_ms"] > 0]
+    latencies = [m["ai_response_latency_ms"] for m in metrics_list if float(m.get("ai_response_latency_ms", 0)) > 0]
     orders = sum(int(m["order_execution_count"]) for m in metrics_list)
     
     return {
@@ -216,7 +216,7 @@ def generate_final_report(metrics_list: list) -> dict:
     if not metrics_list:
         return {}
     
-    latencies = [m["ai_response_latency_ms"] for m in metrics_list if m["ai_response_latency_ms"] > 0]
+    latencies = [m["ai_response_latency_ms"] for m in metrics_list if float(m.get("ai_response_latency_ms", 0)) > 0]
     orders = sum(int(m["order_execution_count"]) for m in metrics_list)
     auth_ok = sum(1 for m in metrics_list if m["auth_session_health"] == "ok")
     auth_degraded = sum(1 for m in metrics_list if m["auth_session_health"] == "degraded")
