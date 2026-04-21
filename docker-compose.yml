@@ -15,7 +15,10 @@ services:
       - "8000:8000"
     networks:
       - trading
-      - bridge
+      - mt5-network
+    environment:
+      - MT5_BRIDGE_HOST=mt5
+      - MT5_BRIDGE_PORT=8001
 
   mt5:
     image: gmag11/metatrader5_vnc
@@ -29,17 +32,9 @@ services:
       - WINEDEBUG=-all
     volumes:
       - mt5-data:/config
+      - ./scripts/fix-mt5linux-start.sh:/etc/cont-init.d/01-fix-mt5linux:ro
     networks:
-      - bridge
-    command: >
-      bash -c "
-      # Wait for MT5 terminal to start
-      sleep 30
-      # Start mt5linux bridge server
-      python3 -m mt5linux --host 0.0.0.0 -p 8001 &
-      # Keep container running
-      sleep infinity
-      "
+      - mt5-network
 
   db:
     image: postgres:16
@@ -74,9 +69,8 @@ services:
 networks:
   trading:
     driver: bridge
-  bridge:
-    external: true
-    name: bridge
+  mt5-network:
+    driver: bridge
 
 volumes:
   pgdata:
