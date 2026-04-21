@@ -61,3 +61,13 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test artifacts
+artifacts/shadow_*_2026-04-21*
+artifacts/shadow_phaseb_run*.log
+
+# Dependency lock
+uv.lock
+
+# Temporary scripts
+scripts/fix-*.sh
