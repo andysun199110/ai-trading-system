@@ -15,6 +15,9 @@ services:
     networks:
       - trading
       - mt5-network
+    environment:
+      - MT5_BRIDGE_HOST=mt5
+      - MT5_BRIDGE_PORT=8001
 
   mt5:
     image: gmag11/metatrader5_vnc
