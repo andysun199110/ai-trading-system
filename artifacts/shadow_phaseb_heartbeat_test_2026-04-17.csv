@@ -1,0 +1,14 @@
+timestamp_utc,ai_response_latency_ms,auth_session_health,signal_generation_count,blocked_signal_reason_count,duplicate_prevention_check,order_execution_count
+2026-04-17T05:01:55.601754+00:00,6.95,ok,0,1,passed,0
+timestamp_utc,ai_response_latency_ms,auth_session_health,signal_generation_count,blocked_signal_reason_count,duplicate_prevention_check,order_execution_count
+2026-04-17T05:02:14.806001+00:00,6.28,ok,0,1,passed,0
+2026-04-17T05:06:55.737690+00:00,2.96,ok,0,1,passed,0
+2026-04-17T05:07:14.962187+00:00,2.9,ok,0,1,passed,0
+2026-04-17T05:11:55.852879+00:00,3.18,ok,0,1,passed,0
+2026-04-17T05:12:15.075382+00:00,2.99,ok,0,1,passed,0
+2026-04-17T05:16:55.966782+00:00,2.94,ok,0,1,passed,0
+2026-04-17T05:17:15.189549+00:00,2.77,ok,0,1,passed,0
+2026-04-17T05:21:56.080002+00:00,3.05,ok,0,1,passed,0
+2026-04-17T05:22:15.295874+00:00,2.9,ok,0,1,passed,0
+2026-04-17T05:26:56.194708+00:00,3.08,ok,0,1,passed,0
+2026-04-17T05:27:15.410517+00:00,3.16,ok,0,1,passed,0
