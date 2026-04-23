@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     app_name: str = "gold-ai-trading"
     env: EnvironmentMode = EnvironmentMode.DEVELOP
     service_name: str = "api_server"
-    strategy_version: str = "stage1"
-    model_version: str = "stub-v1"
-    config_version: str = "2026.04.stage1"
+    strategy_version: str = "stage2"
+    model_version: str = "ai-stage2-v1"
+    config_version: str = "2026.04.stage2"
 
     db_url: str = Field(default="postgresql+psycopg2://gold:gold@db:5432/gold_ai")
     redis_url: str = Field(default="redis://redis:6379/0")

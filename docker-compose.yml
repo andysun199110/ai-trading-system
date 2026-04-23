@@ -5,9 +5,15 @@ services:
       context: .
       dockerfile: infra/docker/Dockerfile.api
     env_file: .env
-    depends_on: [db, redis]
+    depends_on: [db, redis, mt5]
     restart: unless-stopped
     ports: ["8000:8000"]
+    networks: [default, mt5-network]
+  mt5:
+    image: python:3.11-slim
+    command: ["bash", "-lc", "python -m pip install --no-cache-dir rpyc==5.2.3 mt5linux==1.0.3 'numpy<2.0' && sleep infinity"]
+    restart: unless-stopped
+    networks: [mt5-network]
   db:
     image: postgres:16
     environment:
@@ -28,3 +34,7 @@ services:
     restart: unless-stopped
 volumes:
   pgdata:
+
+networks:
+  mt5-network:
+    name: mt5-network
