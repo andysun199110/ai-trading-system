@@ -1,0 +1,174 @@
+time="2026-04-23T23:18:45+08:00" level=warning msg="/opt/ai-trading/docker-compose.yml: `version` is obsolete"
+name: ai-trading
+services:
+  api:
+    build:
+      context: /opt/ai-trading
+      dockerfile: infra/docker/Dockerfile.api
+    depends_on:
+      db:
+        condition: service_started
+        required: true
+      mt5:
+        condition: service_started
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    environment:
+      AI_MAX_RETRIES: "5"
+      AI_PROVIDER: deepseek
+      AI_RETRY_BACKOFF_MS: "2000"
+      AI_TIMEOUT_MS: "30000"
+      CIRCUIT_BREAKER_ENABLED: "true"
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"
+      CIRCUIT_BREAKER_RECOVERY_SECONDS: "60"
+      CONFIG_VERSION: 2026.04.stage2
+      DB_URL: postgresql+psycopg2://gold:gold@db:5432/gold_ai
+      DEEPSEEK_API_BASE: https://api.deepseek.com
+      DEEPSEEK_API_KEY: sk-44187d7b85544afaaba2fb73095a2ffc
+      ENV: develop
+      ETF_API_KEY: d7j28a1r01qp3g1rhju0d7j28a1r01qp3g1rhjug
+      FINNHUB_API_KEY: d7j28a1r01qp3g1rhju0d7j28a1r01qp3g1rhjug
+      JWT_SECRET: c178ccdece178c35a57cca81941d7f74882ee238dcae04ef96c8013d11cf5389
+      MARKET_DATA_PROVIDER: mt5
+      MODEL_VERSION: ai-stage2-v1
+      MT5_ACCOUNT_LOGIN: ""
+      MT5_ACCOUNT_SERVER: ""
+      MT5_BRIDGE_HOST: mt5
+      MT5_BRIDGE_PORT: "18812"
+      MT5_HTTPAPI_AUTH_MODE: bearer
+      MT5_HTTPAPI_TIMEOUT: "10"
+      MT5_HTTPAPI_TOKEN: 36d375f15e96d29cbd206f054f15f0da46a106f6565c0764cd148d6f3fc7397d
+      MT5_HTTPAPI_URL: http://172.19.0.69:8000
+      MT5_LOGIN: "60082633"
+      MT5_PASSWORD: Szw152656@
+      MT5_SERVER: TradeMaxGlobal-Demo
+      MT5_SERVER_ADDRESS: 34.77.56.111:443
+      MT5_SOURCE: mt5_http
+      REDIS_URL: redis://redis:6379/0
+      SERVICE_NAME: api_server
+      SESSION_TTL_MINUTES: "15"
+      SHADOW_ACCOUNT_LOGIN: "60066926"
+      SHADOW_ACCOUNT_SERVER: TradeMaxGlobal-Demo
+      SHADOW_LICENSE_KEY: MT5-LIVE-SG
+      SHADOW_MODE_ENABLED: "true"
+      STAGING_MODE_ENABLED: "false"
+      STALL_DETECTION_THRESHOLD_MINUTES: "30"
+      STRATEGY_VERSION: stage2
+      SYMBOL_WHITELIST: XAUUSD
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+    networks:
+      mt5-network: null
+      trading: null
+    ports:
+      - mode: ingress
+        target: 8000
+        published: "8000"
+        protocol: tcp
+    restart: unless-stopped
+  db:
+    environment:
+      POSTGRES_DB: gold_ai
+      POSTGRES_PASSWORD: gold
+      POSTGRES_USER: gold
+    image: postgres:16
+    networks:
+      trading: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: pgdata
+        target: /var/lib/postgresql/data
+        volume: {}
+  mt5:
+    environment:
+      MT5_LOGIN: "60082633"
+      MT5_PASSWORD: Szw152656@
+      MT5_SERVER: TradeMaxGlobal-Demo
+      MT5_SERVER_ADDRESS: 34.77.56.111:443
+      WINEDEBUG: -all
+      WINEPREFIX: /config/.wine
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - import socket; s=socket.socket(); s.settimeout(5); result=s.connect_ex(('localhost', 8001)); s.close(); exit(0 if result==0 else 1)
+      timeout: 10s
+      interval: 30s
+      retries: 3
+      start_period: 1m0s
+    image: gmag11/metatrader5_vnc
+    networks:
+      mt5-network: null
+    ports:
+      - mode: ingress
+        target: 3000
+        published: "3000"
+        protocol: tcp
+      - mode: ingress
+        target: 5900
+        published: "5900"
+        protocol: tcp
+      - mode: ingress
+        target: 8001
+        published: "8001"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: mt5-data
+        target: /config
+        volume: {}
+      - type: bind
+        source: /opt/ai-trading/scripts/fix-mt5linux-start.sh
+        target: /etc/cont-init.d/01-fix-mt5linux
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /opt/ai-trading/scripts/02-config-mt5-login.sh
+        target: /etc/cont-init.d/02-config-mt5-login
+        read_only: true
+        bind:
+          create_host_path: true
+  nginx:
+    depends_on:
+      api:
+        condition: service_started
+        required: true
+    image: nginx:1.27
+    networks:
+      trading: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "80"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /opt/ai-trading/infra/nginx/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: true
+  redis:
+    image: redis:7
+    networks:
+      trading: null
+    restart: unless-stopped
+networks:
+  mt5-network:
+    name: ai-trading_mt5-network
+    driver: bridge
+  trading:
+    name: ai-trading_trading
+    driver: bridge
+volumes:
+  mt5-data:
+    name: ai-trading_mt5-data
+  pgdata:
+    name: ai-trading_pgdata
