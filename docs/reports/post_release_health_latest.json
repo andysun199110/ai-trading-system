@@ -1,0 +1,24 @@
+{
+  "generated_at_utc": "2026-04-25T04:27:44Z",
+  "window_minutes": 60,
+  "POST_RELEASE_POLL_SUCCESS_RATE": 0.0,
+  "POST_RELEASE_TERMINAL_STATUS_DISTRIBUTION": {
+    "filled": 1,
+    "rejected": 0,
+    "error": 0
+  },
+  "POST_RELEASE_QUEUE_DEPTH": 0,
+  "POST_RELEASE_EA_ERROR_RATE": 0.0,
+  "POST_RELEASE_CANARY_STATUS": "closed",
+  "POST_RELEASE_CANARY_SUCCESS_RATE": 100.0,
+  "POST_RELEASE_CANARY_LATENCY_P50": 11892,
+  "POST_RELEASE_CANARY_LATENCY_P95": 11892,
+  "FINAL_STABILITY_STATUS": "NEEDS_ATTENTION",
+  "next_patrol_utc": "2026-04-25T05:27:44Z",
+  "remediation_actions": [
+    "R1:dependency_health_check",
+    "R2:restart_api_skipped_no_systemctl",
+    "R4:rerun_canary",
+    "R5:incident_and_degrade"
+  ]
+}
