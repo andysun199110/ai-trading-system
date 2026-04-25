@@ -1,10 +1,12 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from services.api_server.admin_service import AdminService
 from services.api_server.db import get_db
+from services.api_server.models import TradingCommand, TradingExecutionReport
 from services.api_server.schemas import (
     AccountControlRequest,
     BindAccountRequest,
@@ -13,6 +15,8 @@ from services.api_server.schemas import (
     ExtendLicenseRequest,
     LicenseCreateRequest,
     RevokeLicenseRequest,
+    AdminCommandsQuery,
+    AdminExecutionReportsQuery,
 )
 from shared.schemas.common import APIResponse
 
@@ -88,3 +92,113 @@ def health() -> APIResponse:
 def promote(req: DeploymentPromoteRequest, db: Session = Depends(get_db)) -> APIResponse:
     rec = AdminService(db).promote(req.environment, req.version)
     return APIResponse(message="deployment_promoted", payload={"id": rec.id})
+
+
+@router.get("/commands", response_model=APIResponse)
+def list_commands(
+    account_login: str | None = Query(None),
+    status: str | None = Query(None),
+    command_type: str | None = Query(None),
+    signal_id: str | None = Query(None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> APIResponse:
+    """
+    Query trading commands for operations/monitoring.
+    
+    Filters:
+    - account_login: Filter by MT5 account login
+    - status: Filter by command status (PENDING, SENT, EXECUTED, etc.)
+    - command_type: Filter by command type (OPEN, CLOSE_FULL, etc.)
+    - signal_id: Filter by source signal ID
+    - limit: Max results (1-500, default 100)
+    """
+    stmt = select(TradingCommand).order_by(TradingCommand.issued_at.desc()).limit(limit)
+    
+    if account_login:
+        stmt = stmt.where(TradingCommand.account_login == account_login)
+    if status:
+        stmt = stmt.where(TradingCommand.status == status)
+    if command_type:
+        stmt = stmt.where(TradingCommand.command_type == command_type)
+    if signal_id:
+        stmt = stmt.where(TradingCommand.signal_id == signal_id)
+    
+    results = db.execute(stmt).scalars().all()
+    
+    commands = []
+    for cmd in results:
+        commands.append({
+            "command_id": cmd.command_id,
+            "account_login": cmd.account_login,
+            "account_server": cmd.account_server,
+            "command_type": cmd.command_type,
+            "symbol": cmd.symbol,
+            "side": cmd.side,
+            "volume": float(cmd.volume) if cmd.volume else None,
+            "sl": float(cmd.sl) if cmd.sl else None,
+            "tp": float(cmd.tp) if cmd.tp else None,
+            "status": cmd.status,
+            "signal_id": cmd.signal_id,
+            "source_module": cmd.source_module,
+            "issued_at": cmd.issued_at.isoformat() + "Z" if cmd.issued_at else None,
+            "expires_at": cmd.expires_at.isoformat() + "Z" if cmd.expires_at else None,
+            "priority": cmd.priority,
+            "reason": cmd.reason,
+        })
+    
+    return APIResponse(
+        payload={
+            "count": len(commands),
+            "items": commands,
+        }
+    )
+
+
+@router.get("/execution-reports", response_model=APIResponse)
+def list_execution_reports(
+    command_id: str | None = Query(None),
+    status: str | None = Query(None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> APIResponse:
+    """
+    Query execution reports for operations/monitoring.
+    
+    Filters:
+    - command_id: Filter by command ID
+    - status: Filter by execution status (EXECUTED, REJECTED, etc.)
+    - limit: Max results (1-500, default 100)
+    """
+    stmt = select(TradingExecutionReport).order_by(TradingExecutionReport.created_at.desc()).limit(limit)
+    
+    if command_id:
+        stmt = stmt.where(TradingExecutionReport.command_id == command_id)
+    if status:
+        stmt = stmt.where(TradingExecutionReport.status == status)
+    
+    results = db.execute(stmt).scalars().all()
+    
+    reports = []
+    for rpt in results:
+        reports.append({
+            "report_id": rpt.report_id,
+            "command_id": rpt.command_id,
+            "ea_terminal": rpt.ea_terminal,
+            "status": rpt.status,
+            "broker_retcode": rpt.broker_retcode,
+            "broker_comment": rpt.broker_comment,
+            "executed_price": float(rpt.executed_price) if rpt.executed_price else None,
+            "executed_volume": float(rpt.executed_volume) if rpt.executed_volume else None,
+            "sl": float(rpt.sl) if rpt.sl else None,
+            "tp": float(rpt.tp) if rpt.tp else None,
+            "server_time": rpt.server_time.isoformat() + "Z" if rpt.server_time else None,
+            "created_at": rpt.created_at.isoformat() + "Z" if rpt.created_at else None,
+        })
+    
+    return APIResponse(
+        payload={
+            "count": len(reports),
+            "items": reports,
+        }
+    )

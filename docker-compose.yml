@@ -18,23 +18,34 @@ services:
       - mt5-network
     environment:
       - MT5_BRIDGE_HOST=mt5
-      - MT5_BRIDGE_PORT=8001
+      - MT5_BRIDGE_PORT=18812
 
   mt5:
     image: gmag11/metatrader5_vnc
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000/tcp"
-      - "127.0.0.1:5900:5900/tcp"
-      - "127.0.0.1:8001:8001/tcp"
+      - "3000:3000"
+      - "5900:5900"
+      - "8001:8001"
     environment:
       - WINEPREFIX=/config/.wine
       - WINEDEBUG=-all
+      - MT5_LOGIN=${MT5_LOGIN:-}
+      - MT5_PASSWORD=${MT5_PASSWORD:-}
+      - MT5_SERVER=${MT5_SERVER:-}
+      - MT5_SERVER_ADDRESS=${MT5_SERVER_ADDRESS:-}
     volumes:
       - mt5-data:/config
       - ./scripts/fix-mt5linux-start.sh:/etc/cont-init.d/01-fix-mt5linux:ro
+      - ./scripts/02-config-mt5-login.sh:/etc/cont-init.d/02-config-mt5-login:ro
     networks:
       - mt5-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(5); result=s.connect_ex(('localhost', 8001)); s.close(); exit(0 if result==0 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   db:
     image: postgres:16

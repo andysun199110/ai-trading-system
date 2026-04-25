@@ -1,0 +1,721 @@
+//+------------------------------------------------------------------+
+//|                                              GoldAITraderEA.mq5 |
+//|                                    AI-Powered Gold Trading System |
+//|                                   Client Execution EA (MQL5)     |
+//|                                                                  |
+//|                    RELEASE VERSION v1.0 - Customer Deployment    |
+//+------------------------------------------------------------------+
+#property copyright "Gold AI Trading System"
+#property version   "1.00"
+#property description "Client-side execution EA with WebRequest signal polling"
+#property strict
+
+//+------------------------------------------------------------------+
+//| Input Parameters - API Configuration                              |
+//+------------------------------------------------------------------+
+input group "═══════════════════════════════════════════════════════"
+input group "           API Configuration (Required)"
+input group "═══════════════════════════════════════════════════════"
+input string Inp_ApiBaseUrl       = "https://your-api-domain.com/api/v1";  // API Base URL
+input string Inp_LicenseKey       = "";                                     // License Key (from provider)
+input int    Inp_PollIntervalSec  = 30;                                     // Poll Interval (seconds)
+
+//+------------------------------------------------------------------+
+//| Input Parameters - Account Settings                               |
+//+------------------------------------------------------------------+
+input group "═══════════════════════════════════════════════════════"
+input group "           Account Settings"
+input group "═══════════════════════════════════════════════════════"
+input string Inp_AccountServer    = "";                                 // MT5 Server Name (e.g., TradeMaxGlobal-Demo)
+input bool   Inp_ShadowMode       = true;                               // Shadow Mode (true=no execution, false=live)
+input double Inp_DefaultLotSize   = 0.01;                               // Default Lot Size
+
+//+------------------------------------------------------------------+
+//| Input Parameters - Risk Management                                |
+//+------------------------------------------------------------------+
+input group "═══════════════════════════════════════════════════════"
+input group "           Risk Management"
+input group "═══════════════════════════════════════════════════════"
+input int    Inp_StopLossPoints   = 500;                               // Stop Loss (points)
+input int    Inp_TakeProfitPoints = 1000;                              // Take Profit (points)
+input bool   Inp_AllowTrading     = false;                             // ⚠️ Allow Live Trading (FALSE for Shadow/Demo)
+input bool   Inp_RequireServerRiskParams = true;                       // Require server-side risk params
+input bool   Inp_UseFallbackRiskParams   = false;                      // Use fallback if server unavailable
+input double Inp_MaxLotCap         = 0.1;                              // Maximum Lot Size Cap
+
+//+------------------------------------------------------------------+
+//| Global Variables                                                  |
+//+------------------------------------------------------------------+
+string g_SessionToken = "";
+datetime g_LastPollTime = 0;
+datetime g_LastSuccessfulPoll = 0;
+string g_LastSignalId = "";
+string g_LastSignalAction = "";
+string g_LastExecutionResult = "";
+int g_LastHttpCode = 0;
+string g_LastHttpError = "";
+bool g_IsConnected = false;
+bool g_ProtectiveMode = false;
+string g_ProcessedSignalsFile = "GoldAI_processed_signals.csv";
+ulong g_MagicNumber = 2026042401;
+
+//--- UI Panel Variables
+int g_PanelX = 10, g_PanelY = 30;
+int g_PanelWidth = 320, g_PanelHeight = 450;
+color g_ColorBg = clrWhite;
+color g_ColorHeader = clrDarkBlue;
+color g_ColorText = clrBlack;
+color g_ColorValue = clrDarkGreen;
+color g_ColorError = clrRed;
+color g_ColorWarning = clrOrange;
+color g_ColorSuccess = clrGreen;
+
+//--- Position Tracking
+double g_PositionLots = 0;
+double g_PositionEntryPrice = 0;
+double g_PositionSL = 0;
+double g_PositionTP = 0;
+ENUM_POSITION_TYPE g_PositionType = POSITION_TYPE_BUY;
+double g_PositionCurrentPrice = 0;
+double g_PositionProfit = 0;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   PrintFormat("[GoldAI] ═══════════════════════════════════════════");
+   PrintFormat("[GoldAI] Gold AI Trader EA v1.00 - RELEASE BUILD");
+   PrintFormat("[GoldAI] ═══════════════════════════════════════════");
+   PrintFormat("[GoldAI] API Endpoint: %s", Inp_ApiBaseUrl);
+   PrintFormat("[GoldAI] Operation Mode: %s", Inp_ShadowMode ? "🔒 SHADOW (No Execution)" : "⚠️ LIVE (Real Trading)");
+   PrintFormat("[GoldAI] Trading Allowed: %s", Inp_AllowTrading ? "⚠️ YES" : "✅ NO (Safe)");
+   PrintFormat("[GoldAI] Account: %d @ %s", AccountInfoInteger(ACCOUNT_LOGIN), AccountInfoString(ACCOUNT_SERVER));
+   PrintFormat("[GoldAI] Max Lot Cap: %.2f", Inp_MaxLotCap);
+   
+   // Validate critical parameters
+   if(Inp_ApiBaseUrl == "https://your-api-domain.com/api/v1" || Inp_ApiBaseUrl == "")
+   {
+      Print("[GoldAI] ⚠️ WARNING: API Base URL not configured! Please set Inp_ApiBaseUrl in parameters.");
+   }
+   
+   if(Inp_LicenseKey == "")
+   {
+      Print("[GoldAI] ⚠️ WARNING: License Key not configured! Authentication will fail.");
+   }
+   
+   // Restore local state
+   RestoreLocalState();
+   
+   // Initial authentication
+   if(!Authenticate())
+   {
+      Print("[GoldAI] Initial auth failed, will retry on first poll");
+      g_SessionToken = "";
+   }
+   else
+   {
+      Print("[GoldAI] ✅ Initial authentication successful");
+   }
+   
+   // Set timer
+   EventSetTimer(Inp_PollIntervalSec);
+   
+   Print("[GoldAI] ═══════════════════════════════════════════");
+   Print("[GoldAI] Initialization complete - Ready for operation");
+   Print("[GoldAI] ═══════════════════════════════════════════");
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   EventKillTimer();
+   DeleteAllObjects(0, "GoldAI_");
+   
+   string reasonText = "";
+   switch(reason)
+   {
+      case INIT_REMOVE: reasonText = "Removed from chart"; break;
+      case INIT_RECOMPILE: reasonText = "Recompiled"; break;
+      case INIT_CHARTCHANGE: reasonText = "Chart changed"; break;
+      case INIT_PARAMETERS: reasonText = "Parameters changed"; break;
+      case INIT_TEMPLATE: reasonText = "Template changed"; break;
+      default: reasonText = "Unknown"; break;
+   }
+   
+   PrintFormat("[GoldAI] Deinitialized: %s", reasonText);
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   // Update position info
+   UpdatePositionInfo();
+   
+   // Update UI panel
+   DrawUIPanel();
+}
+
+//+------------------------------------------------------------------+
+//| Timer function - Main polling loop                               |
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   // Ensure we have a session token
+   if(g_SessionToken == "")
+   {
+      if(!Authenticate())
+      {
+         Print("[GoldAI] Auth failed, will retry on next poll");
+         return;
+      }
+   }
+   
+   // Send heartbeat to keep session alive
+   Heartbeat();
+   
+   // Poll for trading signals from server
+   PollSignals();
+   
+   // Supervise any open positions
+   SuperviseOpenPositions();
+}
+
+//+------------------------------------------------------------------+
+//| Restore local state from file                                    |
+//+------------------------------------------------------------------+
+void RestoreLocalState()
+{
+   // Read processed signals file to avoid duplicate executions
+   if(FileIsExist(g_ProcessedSignalsFile))
+   {
+      Print("[GoldAI] 📁 Restored processed signals ledger");
+   }
+   else
+   {
+      // Create new file with header
+      int handle = FileOpen(g_ProcessedSignalsFile, FILE_WRITE|FILE_CSV);
+      if(handle != INVALID_HANDLE)
+      {
+         FileWrite(handle, "timestamp,signal_id,action,symbol,lot_size,status");
+         FileClose(handle);
+         Print("[GoldAI] 📄 Created new processed signals ledger");
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Authenticate with API server                                     |
+//+------------------------------------------------------------------+
+bool Authenticate()
+{
+   if(Inp_LicenseKey == "")
+   {
+      Print("[GoldAI] ❌ Cannot authenticate: License Key is empty");
+      return false;
+   }
+   
+   string url = Inp_ApiBaseUrl + "/auth";
+   string headers = "Content-Type: application/json\r\n";
+   string post_data = "{\"license_key\":\"" + Inp_LicenseKey + "\",\"account_login\":\"" + 
+                      IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "\",\"account_server\":\"" + 
+                      AccountInfoString(ACCOUNT_SERVER) + "\"}";
+   
+   int timeout = 30000; // 30 seconds
+   int http_code = 0;
+   
+   string response = WebRequest("POST", url, headers, timeout, post_data, http_code);
+   
+   g_LastHttpCode = http_code;
+   
+   if(http_code == 200)
+   {
+      // Extract session token from response
+      // Expected format: {"session_token":"xxx","expires_in":3600}
+      int token_start = StringFind(response, "\"session_token\":\"");
+      if(token_start != -1)
+      {
+         token_start += 17; // Length of "\"session_token\":\""
+         int token_end = StringFind(response, "\"", token_start);
+         if(token_end != -1)
+         {
+            g_SessionToken = StringSubstr(response, token_start, token_end - token_start);
+            PrintFormat("[GoldAI] ✅ Auth successful - Session token received");
+            g_IsConnected = true;
+            return true;
+         }
+      }
+      
+      Print("[GoldAI] ⚠️ Auth response parsing failed");
+      return false;
+   }
+   else if(http_code == 401 || http_code == 403)
+   {
+      PrintFormat("[GoldAI] ❌ Auth failed: HTTP %d - Invalid credentials or license", http_code);
+      g_IsConnected = false;
+      return false;
+   }
+   else if(http_code == 0)
+   {
+      PrintFormat("[GoldAI] ❌ Auth failed: Cannot connect to %s", url);
+      Print("[GoldAI] ⚠️ Check: 1) Internet connection 2) WebRequest whitelist 3) API URL");
+      g_IsConnected = false;
+      return false;
+   }
+   else
+   {
+      PrintFormat("[GoldAI] ❌ Auth failed: HTTP %d", http_code);
+      g_IsConnected = false;
+      return false;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Send heartbeat to maintain session                               |
+//+------------------------------------------------------------------+
+void Heartbeat()
+{
+   if(g_SessionToken == "") return;
+   
+   string url = Inp_ApiBaseUrl + "/heartbeat";
+   string headers = "Content-Type: application/json\r\nAuthorization: Bearer " + g_SessionToken + "\r\n";
+   string post_data = "{\"account_login\":\"" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + 
+                      "\",\"account_server\":\"" + AccountInfoString(ACCOUNT_SERVER) + "\"," +
+                      "\"shadow_mode\":" + (Inp_ShadowMode ? "true" : "false") + "}";
+   
+   int timeout = 10000;
+   int http_code = 0;
+   
+   string response = WebRequest("POST", url, headers, timeout, post_data, http_code);
+   
+   if(http_code == 200)
+   {
+      g_LastSuccessfulPoll = TimeCurrent();
+      Print("[GoldAI] 💓 Heartbeat sent successfully");
+   }
+   else
+   {
+      PrintFormat("[GoldAI] ⚠️ Heartbeat failed: HTTP %d", http_code);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Poll for trading signals from server                             |
+//+------------------------------------------------------------------+
+void PollSignals()
+{
+   if(g_SessionToken == "") return;
+   
+   string url = Inp_ApiBaseUrl + "/signals/poll";
+   string headers = "Content-Type: application/json\r\nAuthorization: Bearer " + g_SessionToken + "\r\n";
+   string post_data = "{\"account_login\":\"" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + 
+                      "\",\"account_server\":\"" + AccountInfoString(ACCOUNT_SERVER) + "\"," +
+                      "\"last_signal_id\":\"" + g_LastSignalId + "\"," +
+                      "\"symbol\":\"XAUUSD\"," +
+                      "\"shadow_mode\":" + (Inp_ShadowMode ? "true" : "false") + "}";
+   
+   int timeout = 30000;
+   int http_code = 0;
+   
+   string response = WebRequest("POST", url, headers, timeout, post_data, http_code);
+   
+   g_LastHttpCode = http_code;
+   g_LastPollTime = TimeCurrent();
+   
+   if(http_code == 200)
+   {
+      g_LastSuccessfulPoll = TimeCurrent();
+      
+      // Check if there's a new signal
+      if(StringFind(response, "\"signal_id\"") != -1)
+      {
+         ProcessSignal(response);
+      }
+      else
+      {
+         Print("[GoldAI] 📡 Poll: No new signals");
+      }
+   }
+   else if(http_code == 401 || http_code == 403)
+   {
+      Print("[GoldAI] ❌ Poll failed: Session expired, re-authenticating...");
+      g_SessionToken = "";
+      Authenticate();
+   }
+   else
+   {
+      PrintFormat("[GoldAI] ⚠️ Poll failed: HTTP %d", http_code);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Process trading signal from server                               |
+//+------------------------------------------------------------------+
+void ProcessSignal(string response)
+{
+   // Extract signal details
+   // Expected format: {"signal_id":"xxx","action":"BUY/SELL/CLOSE","lot_size":0.01,"symbol":"XAUUSD",...}
+   
+   int signalIdStart = StringFind(response, "\"signal_id\":\"");
+   if(signalIdStart == -1) return;
+   signalIdStart += 13;
+   int signalIdEnd = StringFind(response, "\"", signalIdStart);
+   string signal_id = StringSubstr(response, signalIdStart, signalIdEnd - signalIdStart);
+   
+   // Check if already processed
+   if(IsSignalProcessed(signal_id))
+   {
+      PrintFormat("[GoldAI] ⏭️ Signal %s already processed, skipping", signal_id);
+      return;
+   }
+   
+   // Extract action
+   int actionStart = StringFind(response, "\"action\":\"");
+   if(actionStart == -1) return;
+   actionStart += 10;
+   int actionEnd = StringFind(response, "\"", actionStart);
+   string action = StringSubstr(response, actionStart, actionEnd - actionStart);
+   
+   // Extract lot size
+   double lot_size = Inp_DefaultLotSize;
+   int lotStart = StringFind(response, "\"lot_size\":");
+   if(lotStart != -1)
+   {
+      lotStart += 11;
+      int lotEnd = StringFind(response, ",", lotStart);
+      if(lotEnd == -1) lotEnd = StringFind(response, "}", lotStart);
+      if(lotEnd != -1)
+      {
+         string lot_str = StringSubstr(response, lotStart, lotEnd - lotStart);
+         lot_size = StringToDouble(lot_str);
+      }
+   }
+   
+   // Apply lot cap
+   if(lot_size > Inp_MaxLotCap)
+   {
+      PrintFormat("[GoldAI] ⚠️ Lot size %.2f exceeds cap %.2f, using cap", lot_size, Inp_MaxLotCap);
+      lot_size = Inp_MaxLotCap;
+   }
+   
+   PrintFormat("[GoldAI] 📊 New signal: %s - Action: %s, Lots: %.2f", signal_id, action, lot_size);
+   
+   // Execute signal
+   bool executed = false;
+   
+   if(action == "BUY" || action == "SELL")
+   {
+      if(Inp_ShadowMode || !Inp_AllowTrading)
+      {
+         PrintFormat("[GoldAI] 🔒 SHADOW MODE: Would execute %s %.2f lots (NOT EXECUTED)", action, lot_size);
+         executed = true; // Consider "executed" for logging purposes
+      }
+      else
+      {
+         executed = ExecuteTrade(action, lot_size);
+      }
+   }
+   else if(action == "CLOSE")
+   {
+      if(Inp_ShadowMode || !Inp_AllowTrading)
+      {
+         PrintFormat("[GoldAI] 🔒 SHADOW MODE: Would CLOSE position (NOT EXECUTED)");
+         executed = true;
+      }
+      else
+      {
+         executed = ClosePosition();
+      }
+   }
+   
+   // Record processed signal
+   if(executed)
+   {
+      RecordProcessedSignal(signal_id, action, lot_size, "EXECUTED");
+      g_LastSignalId = signal_id;
+      g_LastSignalAction = action;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Execute trade order                                              |
+//+------------------------------------------------------------------+
+bool ExecuteTrade(string action, double lot_size)
+{
+   if(!Inp_AllowTrading)
+   {
+      Print("[GoldAI] ❌ Trading not allowed - Inp_AllowTrading is false");
+      return false;
+   }
+   
+   ENUM_ORDER_TYPE orderType = (action == "BUY") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   double price = (action == "BUY") ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   
+   MqlTradeRequest request = {};
+   MqlTradeResult result = {};
+   
+   request.action = TRADE_ACTION_DEAL;
+   request.symbol = _Symbol;
+   request.volume = lot_size;
+   request.type = orderType;
+   request.price = price;
+   request.sl = (orderType == ORDER_TYPE_BUY) ? price - Inp_StopLossPoints * _Point : price + Inp_StopLossPoints * _Point;
+   request.tp = (orderType == ORDER_TYPE_BUY) ? price + Inp_TakeProfitPoints * _Point : price - Inp_TakeProfitPoints * _Point;
+   request.magic = g_MagicNumber;
+   request.deviation = 10;
+   request.type_filling = ORDER_FILLING_IOC;
+   
+   PrintFormat("[GoldAI] 🚀 Executing %s %.2f lots @ %.2f", action, lot_size, price);
+   
+   if(!OrderSend(request, result))
+   {
+      PrintFormat("[GoldAI] ❌ Order failed: %s (retcode=%d)", result.comment, result.retcode);
+      g_LastExecutionResult = "FAILED: " + result.comment;
+      return false;
+   }
+   
+   if(result.retcode == TRADE_RETCODE_DONE)
+   {
+      PrintFormat("[GoldAI] ✅ Order executed successfully - Ticket: %d", result.order);
+      g_LastExecutionResult = "SUCCESS: Ticket " + IntegerToString(result.order);
+      return true;
+   }
+   else
+   {
+      PrintFormat("[GoldAI] ❌ Order rejected: retcode=%d", result.retcode);
+      g_LastExecutionResult = "REJECTED: retcode " + IntegerToString(result.retcode);
+      return false;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Close open position                                              |
+//+------------------------------------------------------------------+
+bool ClosePosition()
+{
+   if(!Inp_AllowTrading)
+   {
+      Print("[GoldAI] ❌ Trading not allowed - Inp_AllowTrading is false");
+      return false;
+   }
+   
+   // Find and close position
+   if(!PositionSelect(_Symbol))
+   {
+      Print("[GoldAI] No open position to close");
+      return false;
+   }
+   
+   MqlTradeRequest request = {};
+   MqlTradeResult result = {};
+   
+   ulong ticket = PositionGetTicket(POSITION_TICKET);
+   double volume = PositionGetDouble(POSITION_VOLUME);
+   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   
+   request.action = TRADE_ACTION_DEAL;
+   request.position = ticket;
+   request.symbol = _Symbol;
+   request.volume = volume;
+   request.type = (posType == POSITION_TYPE_BUY) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
+   request.price = (posType == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   request.deviation = 10;
+   request.magic = g_MagicNumber;
+   request.type_filling = ORDER_FILLING_IOC;
+   
+   PrintFormat("[GoldAI] 🚀 Closing position - Ticket: %d, Volume: %.2f", ticket, volume);
+   
+   if(!OrderSend(request, result))
+   {
+      PrintFormat("[GoldAI] ❌ Close failed: %s", result.comment);
+      return false;
+   }
+   
+   if(result.retcode == TRADE_RETCODE_DONE)
+   {
+      PrintFormat("[GoldAI] ✅ Position closed successfully");
+      return true;
+   }
+   else
+   {
+      PrintFormat("[GoldAI] ❌ Close rejected: retcode=%d", result.retcode);
+      return false;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Supervise open positions                                         |
+//+------------------------------------------------------------------+
+void SuperviseOpenPositions()
+{
+   if(!PositionSelect(_Symbol)) return;
+   
+   UpdatePositionInfo();
+   
+   // Check for protective close conditions
+   if(g_ProtectiveMode && g_PositionProfit < -100) // $100 loss threshold
+   {
+      Print("[GoldAI] ⚠️ Protective mode: Large loss detected");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Update position information                                      |
+//+------------------------------------------------------------------+
+void UpdatePositionInfo()
+{
+   if(PositionSelect(_Symbol))
+   {
+      g_PositionLots = PositionGetDouble(POSITION_VOLUME);
+      g_PositionEntryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      g_PositionSL = PositionGetDouble(POSITION_SL);
+      g_PositionTP = PositionGetDouble(POSITION_TP);
+      g_PositionType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      g_PositionCurrentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
+      g_PositionProfit = PositionGetDouble(POSITION_PROFIT);
+   }
+   else
+   {
+      g_PositionLots = 0;
+      g_PositionProfit = 0;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check if signal was already processed                            |
+//+------------------------------------------------------------------+
+bool IsSignalProcessed(string signal_id)
+{
+   int handle = FileOpen(g_ProcessedSignalsFile, FILE_READ|FILE_CSV);
+   if(handle == INVALID_HANDLE) return false;
+   
+   while(!FileIsEnding(handle))
+   {
+      string line = FileReadString(handle);
+      if(StringFind(line, signal_id) != -1)
+      {
+         FileClose(handle);
+         return true;
+      }
+   }
+   
+   FileClose(handle);
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Record processed signal                                          |
+//+------------------------------------------------------------------+
+void RecordProcessedSignal(string signal_id, string action, double lot_size, string status)
+{
+   int handle = FileOpen(g_ProcessedSignalsFile, FILE_WRITE|FILE_READ|FILE_CSV);
+   if(handle == INVALID_HANDLE) return;
+   
+   // Go to end of file
+   FileSeek(handle, 0, SEEK_END);
+   
+   string timestamp = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS);
+   FileWrite(handle, timestamp, signal_id, action, _Symbol, DoubleToString(lot_size, 2), status);
+   
+   FileClose(handle);
+}
+
+//+------------------------------------------------------------------+
+//| Draw UI panel on chart                                           |
+//+------------------------------------------------------------------+
+void DrawUIPanel()
+{
+   string prefix = "GoldAI_";
+   
+   // Background
+   CreateLabel(prefix + "bg", g_PanelX, g_PanelY, g_PanelWidth, g_PanelHeight, "■", g_ColorBg);
+   
+   // Header
+   CreateLabel(prefix + "header", g_PanelX + 5, g_PanelY + 5, 0, 0, "🤖 Gold AI Trader v1.00", g_ColorHeader, clrWhite, 11, true);
+   
+   // Status
+   string status = g_IsConnected ? "✅ Connected" : "❌ Disconnected";
+   color statusColor = g_IsConnected ? g_ColorSuccess : g_ColorError;
+   CreateLabel(prefix + "status", g_PanelX + 5, g_PanelY + 25, 0, 0, "Status: " + status, statusColor, 10);
+   
+   // Mode
+   string mode = Inp_ShadowMode ? "🔒 SHADOW" : "⚠️ LIVE";
+   CreateLabel(prefix + "mode", g_PanelX + 5, g_PanelY + 40, 0, 0, "Mode: " + mode, g_ColorValue, 10);
+   
+   // Account
+   string account = IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN));
+   CreateLabel(prefix + "account", g_PanelX + 5, g_PanelY + 55, 0, 0, "Account: " + account, g_ColorText, 10);
+   
+   // Last poll
+   string lastPoll = g_LastPollTime > 0 ? TimeToString(g_LastPollTime, TIME_MINUTES|TIME_SECONDS) : "Never";
+   CreateLabel(prefix + "poll", g_PanelX + 5, g_PanelY + 70, 0, 0, "Last Poll: " + lastPoll, g_ColorText, 10);
+   
+   // Position info
+   if(g_PositionLots > 0)
+   {
+      string posType = (g_PositionType == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+      CreateLabel(prefix + "pos", g_PanelX + 5, g_PanelY + 90, 0, 0, 
+                  "Position: " + posType + " " + DoubleToString(g_PositionLots, 2) + 
+                  " | P/L: $" + DoubleToString(g_PositionProfit, 2), 
+                  g_PositionProfit >= 0 ? g_ColorSuccess : g_ColorError, 10);
+   }
+   else
+   {
+      CreateLabel(prefix + "pos", g_PanelX + 5, g_PanelY + 90, 0, 0, "Position: None", g_ColorText, 10);
+   }
+   
+   // Last signal
+   if(g_LastSignalId != "")
+   {
+      CreateLabel(prefix + "signal", g_PanelX + 5, g_PanelY + 110, 0, 0, 
+                  "Last: " + g_LastSignalAction + " (" + g_LastSignalId + ")", g_ColorText, 9);
+   }
+   
+   // Execution result
+   if(g_LastExecutionResult != "")
+   {
+      color resultColor = StringFind(g_LastExecutionResult, "SUCCESS") != -1 ? g_ColorSuccess : g_ColorError;
+      CreateLabel(prefix + "exec", g_PanelX + 5, g_PanelY + 125, 0, 0, g_LastExecutionResult, resultColor, 9);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Helper: Create label object                                      |
+//+------------------------------------------------------------------+
+void CreateLabel(string name, int x, int y, int width, int height, string text, color clr, 
+                 color bgColor = clrNONE, int fontSize = 10, bool bold = false)
+{
+   if(ObjectFind(0, name) < 0)
+   {
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+      ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   }
+   
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetString(0, name, OBJPROP_FONT, bold ? "Arial Bold" : "Arial");
+}
+
+//+------------------------------------------------------------------+
+//| Helper: Delete all objects with prefix                           |
+//+------------------------------------------------------------------+
+void DeleteAllObjects(long chart_id, string prefix)
+{
+   int total = ObjectsTotal(chart_id, 0, OBJ_LABEL);
+   for(int i = total - 1; i >= 0; i--)
+   {
+      string name = ObjectName(chart_id, i, 0, OBJ_LABEL);
+      if(StringFind(name, prefix) == 0)
+      {
+         ObjectDelete(chart_id, name);
+      }
+   }
+}

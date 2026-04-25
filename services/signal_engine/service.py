@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from services.ai_orchestrator.service import Service as AIOrchestratorService
 from services.risk_manager.service import Service as RiskService
+from services.command_publisher import CommandPublisher
+from services.api_server.db import get_db
 from shared.constants.domain import SYMBOL_XAUUSD
 
 
@@ -75,4 +77,41 @@ class Service:
             if ai_result["decision"] not in {"approve", "adjust"}:
                 return ServiceResult(status="blocked", payload={"blocked_reasons": ["ai_review"], "ai_review_result": ai_result})
         signal["ai_review_result"] = ai_result
+        
+        # Create trading command if account info provided
+        account_login = data.get("account_login")
+        account_server = data.get("account_server")
+        command_id = None
+        
+        if account_login and account_server:
+            try:
+                db = next(get_db())
+                publisher = CommandPublisher(db)
+                
+                # Determine side and volume from signal
+                side = signal["side"]  # 'buy' or 'sell'
+                volume = data.get("volume", 0.01)
+                sl = signal["initial_sl"]
+                tp = signal["tp"]
+                
+                # Create OPEN command
+                command = publisher.create_open_command(
+                    account_login=account_login,
+                    account_server=account_server,
+                    signal_id=signal["signal_id"],
+                    side=side,
+                    volume=volume,
+                    sl=sl,
+                    tp=tp,
+                    strategy_version=signal["strategy_version"],
+                    config_version=signal["config_version"],
+                    expires_minutes=data.get("expires_minutes", 10),
+                )
+                command_id = command.command_id
+                db.close()
+            except Exception as e:
+                # Log error but don't block signal approval
+                signal["command_creation_error"] = str(e)
+        
+        signal["command_id"] = command_id
         return ServiceResult(status="approved", payload=signal)
